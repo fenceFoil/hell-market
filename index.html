@@ -91,8 +91,51 @@
         }
 
         #stockGraph {
-            stroke: red;
+            stroke: crimson;
             fill: rgba(255, 0, 0, .3);
+        }
+
+        #clockArea {
+            height: 3em;
+            display: flex; flex-direction: row; align-items: center; gap: 0.5em;
+
+            #clockHand {
+                height: 3em;
+            }
+
+            .label {
+                transform-origin: center center;
+                display: grid;
+                place-items: center;
+            }
+        }
+
+        #players {
+            font-size: 0.5em;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
+            text-align: center;
+            gap: 0.5em;
+
+            .player {
+                color: #333;
+
+                .name {
+                    font-weight: bold;
+                }
+
+                .stocks {
+
+                }
+            }
+
+            .player.playing {
+                color: crimson;
+            }
+        }
+
+        .winning {
+            color: gold !important;
         }
 
 
@@ -102,15 +145,34 @@
 <body x-data="d">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js" integrity="sha512-aNMyYYxdIxIaot0Y1/PLuEu3eipGCmsEUBrUq+7aVyPGMFH8z0eTP0tkqAvv34fzN6z+201d3T8HPb1svWSKHQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="sparkline.js"></script>
-    <main>
-        👿 ~Hell Market~ 😈
+    <main @keydown.window="onKeyDown" @keyup.window="onKeyUp">
+        <div>
+            👿 ~Hell Market~ 😈
+        </div>
 
-        <button>Start</button>
+        <button x-show="stage==='ready'" @click="onStart">Start</button>
 
-        <svg id="stockGraph" width="400" height="200" stroke-width="10"></svg>
-        <script>
-            sparkline(document.getElementById('stockGraph'), [0, 2, 10, 4, 5, 9, 0]);
-        </script>
+        
+        <svg id="stockGraph" width="600" height="300" stroke-width="5"></svg>
+        
+        <div id="clockArea" x-show="stage==='playing'">
+            <div id="buyLabel" class="label">+</div>
+            <img id="clockHand" src="upArrow.png">
+            <div id="sellLabel" class="label">-</div>
+        </div>
+        <div id="price" x-text="`$${stockPrice}`">
+
+        </div>
+        <div id="players">
+            <template x-for="p in players">
+                <div class="player" :class="{playing: p.playing, winning: (isPlayerWinning(p) && p.playing),}">
+                    <div class="name" x-text="p.name"></div>
+                    <div class="money"><span style="font-size: 0.5em;">$</span><span x-text="p.money"></span></div>
+                    <div class="stocks"><span x-text="p.stocks"></span>x</div>
+                    <div class="netWorth"><span style="font-size: 0.5em;">$</span><span x-text="getNetWorth(p)"></span></div>
+                </div>
+            </template>
+        </div>
     </main>
 
     <script src="https://unpkg.com/alpinejs" defer></script>
@@ -118,15 +180,165 @@
     <script>
         var alpineThis = null;
 
+        var INITIAL_PLAYERS_JSON = JSON.stringify([
+                    {name: 'a', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'b', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'c', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'd', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'e', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'f', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'g', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'h', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'i', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'j', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'k', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'l', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'm', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'n', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'o', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'p', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'q', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'r', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 's', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 't', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'u', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'v', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'w', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'x', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'y', money: 75, stocks: 0, playing: false, isDown: false,},
+                    {name: 'z', money: 75, stocks: 0, playing: false, isDown: false,},
+                ]);
+
         document.addEventListener('alpine:init', () => {
             Alpine.data('d', () => ({
+                stage: 'ready',
+                players: JSON.parse(INITIAL_PLAYERS_JSON),
+                clockAnimation: null,
+                clockBuyDone: false,
+                clockSellDone: false,
+                currRound: 0,
+                stockPrice: 2,
+                stockPriceHistory: [],
 
                 init() {
                     alpineThis = this;
 
-                    
+                    this.clockAnimation = anime({
+                        targets: '#clockHand',
+                        rotate: 360,
+                        duration: 2000,
+                        direction: '',
+                        loop: true,
+                        autoplay: false,
+                        easing: 'linear',
+                        loopComplete: alpineThis.onClockTick,
+                        change: alpineThis.onClockChange,
+                    });
+
+                    this.onStart()
+
+                    this.$watch('stockPriceHistory', v => {
+                        sparkline(document.getElementById('stockGraph'), v.slice(-50));
+                    })
                 },
 
+                onClockTick() {
+                    //console.log('$$$');
+                    alpineThis.clockBuyDone = false;
+                    alpineThis.clockSellDone = false;
+                },
+
+                onClockChange(a) {
+                    //console.log(a.progress, alpineThis.lastAction)
+                    if ((a.progress > 25) && (!alpineThis.clockSellDone)) {
+                        alpineThis.clockSellDone = true;
+                        anime({
+                            targets: "#sellLabel",
+                            scale: 2,
+                            duration: 100,
+                            easing: 'linear',
+                            direction: 'alternate',
+                            autoplay: true,
+                        })
+                        let currPrice = alpineThis.stockPrice; // TODO price
+                        alpineThis.players.filter(p => p.playing).forEach(p => {
+                            if (p.isDown && (p.stocks > 0)) {
+                                p.stocks -= 1;
+                                p.money += currPrice;
+                                alpineThis.stockPrice -= 2;
+                            }
+                        })
+                        alpineThis.stockPriceHistory.push(alpineThis.stockPrice)
+                    } else if ((a.progress > 75) && (!alpineThis.clockBuyDone)) {
+                        alpineThis.clockBuyDone = true;
+                        anime({
+                            targets: "#buyLabel",
+                            rotate: 120,
+                            duration: 400,
+                            easing: 'easeOutSine',
+                            direction: 'alternate',
+                            autoplay: true,
+                        })
+                        let currPrice = alpineThis.stockPrice; // TODO price
+                        alpineThis.players.filter(p => p.playing).forEach(p => {
+                            console.log(p);
+                            if (p.isDown && (p.money >= currPrice)) {
+                                p.stocks += 1;
+                                p.money -= currPrice;
+                                alpineThis.stockPrice += 1;
+                            }
+                        })
+                        alpineThis.stockPriceHistory.push(alpineThis.stockPrice)
+                    }
+                },
+
+                onStart() {
+                    this.stage = 'playing';
+                    this.players = JSON.parse(INITIAL_PLAYERS_JSON);
+                    this.clockAnimation.play();
+                    this.clockBuyDone = false;
+                    this.clockSellDone = false;
+                    this.currRound = 0;
+                },
+
+                onKeyDown(evt) {
+                    let p = this.playerByName(evt.key);
+                    if (p) {
+                        p.playing = true;
+                        p.isDown = true;
+                    }
+                },
+
+                onKeyUp(evt) {
+                    let p = this.playerByName(evt.key);
+                    if (p) {
+                        p.isDown = false;
+                    }
+                },
+
+                playerByName(name) {
+                    let matches = this.players.filter(p => p.name === name);
+                    if (matches.length > 0) {
+                        return matches[0]
+                    } else {
+                        return null;
+                    }
+                },
+
+                isPlayerWinning(p) {
+                    let highestMoney = 0;
+                    for (let pp of alpineThis.players) {
+                        if (alpineThis.getNetWorth(pp) > highestMoney) {
+                            highestMoney = alpineThis.getNetWorth(pp);
+                        }
+                    }
+
+                    return alpineThis.getNetWorth(p) == highestMoney;
+                },
+
+                getNetWorth(p) {
+                    return p.money + p.stocks * this.stockPrice;
+                },
 
             }))
         })
